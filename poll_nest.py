@@ -6,30 +6,36 @@ from errors import error_result
 from errors import APIError
 
 
+conf = configparser.ConfigParser()
+conf.read("config")
+
+auth_t = conf.get('configuration', 'auth_token')
+nest_api_url = conf.get('configuration', 'nest_api')
+
+
+local_cams_object = {
+        # 'name' : name_object
+        }
+
 # Our event data object
-def get_camera_dict(source, camera_id):
+def get_camera_dict(name, camera_id):
+    # type: (object, object) -> object
     return {
         'routing_key': 'R0157YB9LD9RLMHIGSHE753210DFAAU9',
         'event_action': 'trigger',
         'payload': {
             'summary': '',
             'severity': '',
-            'source': source,
+            'source': name,
             'component': 'Camera',
             'timestamp': ''
         },
         'cam_id': camera_id,
-        'base_url' : 'https://developer-api.nest.com/devices/cameras/',
+        'base_url' : nest_api_url,
         'url' : '',
         'last_event_time' : '',
         'web_url' : ''
     }
-
-conf = configparser.ConfigParser()
-conf.read("config")
-
-auth_t = conf.get('configuration', 'auth_token')
-nest_api_url = conf.get('configuration', 'nest_api')
 
 
 #### GET NEST DATA FROM CAMERAS #####
@@ -66,41 +72,85 @@ def get_nest_data():
 
 # Initialize
 def init_cam_structures():
-    cameras = get_nest_data()
-    for key, value in cameras.items():  # type: (object, object)
+    cameras_json = get_nest_data()
+
+    for key, value in cameras_json.items():  # type: (object, object)
         print (key, value)
+        # populate our local cameras datastructure
+        name = cameras_json[key]['device_id']
+        local_cams_object[name] = get_camera_dict(cameras_json[key]['name'], cameras_json[key]['device_id'])
+        print("Found", cameras_json[key]["name"])
+
 
 init_cam_structures()
 
 def poll_cameras():
     # type: (object) -> object
 
-    data = get_nest_data()
+    for key, value in local_cams_object.items():
+        # print key, value
+        local_cams_object[key]['url'] = local_cams_object[key]['base_url'] + local_cams_object[key]['cam_id'] + '/'
+        # print key, value
+        response = get_nest_data()
 
-    camera_id = cameras.keys()[0]
-    camera = cameras[camera_id]
+        # If Nest Cloud is not responding
+        # HTTPSConnectionPool(host='developer-api.nest.com', port=443): Max retries exceeded with url: /devices/cameras/f3lekKgaeNvSnmjlvY9kwpIeqdEWjvst8opkq0o-ecTH_fxyUXJyZQ/ (Caused by NewConnectionError('<urllib3.connection.VerifiedHTTPSConnection object at 0x10cdb6e50>: Failed to establish a new connection: [Errno 8] nodename nor servname provided, or not known',))
+        # No response from
 
-    number_cams = len(cameras.keys())
+        if response is None:
+            print ("No response from ")
+            print (cameras[key])
+            break
 
-    print ("Found", number_cams, "cameras")
+        print (response)
+        local_cams_object[key]["payload"]["severity"] = 'critical'
+        local_cams_object[key]["payload"]["timestamp"] = response[key]["last_event"]["start_time"]
+        local_cams_object[key]["payload"]["source"] = response[key]["name_long"]
+        local_cams_object[key]["web_url"] = response[key]["last_event"]["web_url"]
 
-    i = 0
-    while i < number_cams:
-        camera_id = cameras.keys()[i]
-        camera = cameras[camera_id]
-        print("Found", camera["name"])
-        i += 1
+        if response[key]["last_event"]["has_person"]:
+            local_cams_object[key]["payload"]["summary"] = "API: " + local_cams_object[key]["payload"]["source"] + ' spotted a person'
 
-        # Verify the Nest Cam has a Snapshot URL field
-        if 'snapshot_url' not in camera:
-            raise APIError(error_result("Camera has no snapshot URL"))
+        elif response[key]["last_event"]["has_motion"]:
+            local_cams_object[key]["payload"]["summary"] = "API: " + local_cams_object[key]["payload"]["source"] + ' spotted movement'
 
-        snapshot_url = camera["snapshot_url"]
-        print ("Snapshot url : ", snapshot_url)
+        elif response[key]["last_event"]["has_sound"]:
+            local_cams_object[key]["payload"]["summary"] = "API: " + local_cams_object[key]["payload"]["source"] + ' heard a loud noise'
 
-    return snapshot_url
+        # sanitize
+        data = dict(local_cams_object[key])
 
+        # Sanitize before sending to PD
+        del data['url']
+        del data['base_url']
+        del data['cam_id']
 
-#fetch_snapshot_url(auth_t)
+        oldtime = local_cams_object[key]["last_event_time"]
+        newtime = response[key]["last_event"]["start_time"]
+
+        print (local_cams_object[key]["payload"]["source"])
+        print ("testing newtime == oldtime")
+        print ("oldtime : " + oldtime + "  " + "newtime : " + newtime)
+
+        # Skip on start up
+        if oldtime:
+            if newtime == oldtime:
+                print ("last event time matched -- skipping")
+            else:
+                try:
+                    #### SEND AN EVENT TO PAGERDUTY #####
+                    # create a version 2 event
+                    alert = pypd.EventV2.create(data)
+
+                    # alert return {u'status': u'success', u'message': u'Event processed', u'dedup_key': u'15bf1c5df8fe4ec3bb06cffd4c317cac'}
+
+                    print
+                    print ("last event time NOT matched -- sending PD Alert")
+                    print (local_cams_object[key]["payload"]["summary"])
+                    print
+
+                except Exception as bad:
+                    print(bad)
+        local_cams_object[key]["last_event_time"] = newtime
 
 poll_cameras()
