@@ -9,7 +9,7 @@ from errors import APIError
 
 
 conf = configparser.ConfigParser()
-conf.read("config")
+conf.read("config.txt")
 
 auth_t = conf.get('configuration', 'auth_token')
 nest_api_url = conf.get('configuration', 'nest_api')
