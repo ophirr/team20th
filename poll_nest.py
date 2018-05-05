@@ -77,11 +77,10 @@ def init_cam_structures():
     cameras_json = get_nest_data()
 
     for key, value in cameras_json.items():  # type: (object, object)
-        print (key, value)
+    
         # populate our local cameras datastructure
         name = cameras_json[key]['device_id']
         local_cams_object[name] = get_camera_dict(cameras_json[key]['name'], cameras_json[key]['device_id'])
-        print("Found", cameras_json[key]["name"])
 
 
 init_cam_structures()
