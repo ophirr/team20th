@@ -2,6 +2,8 @@
 
 import requests
 import configparser
+import schedule
+import time
 from errors import error_result
 from errors import APIError
 
@@ -153,4 +155,10 @@ def poll_cameras():
                     print(bad)
         local_cams_object[key]["last_event_time"] = newtime
 
-poll_cameras()
+# Run every two minutes
+schedule.every(2).minutes.do(poll_cameras)
+
+while True:
+    schedule.run_pending()
+    time.sleep(1)
+
