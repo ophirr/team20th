@@ -1,1 +1,8 @@
+# Look at everything
+/**
 
+# Now exclude our pyc files
+!/**/*.pyc
+
+# stays local
+dont-put-in-github.txt
