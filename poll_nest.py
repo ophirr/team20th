@@ -77,7 +77,7 @@ def init_cam_structures():
     cameras_json = get_nest_data()
 
     for key, value in cameras_json.items():  # type: (object, object)
-    
+
         # populate our local cameras datastructure
         name = cameras_json[key]['device_id']
         local_cams_object[name] = get_camera_dict(cameras_json[key]['name'], cameras_json[key]['device_id'])
@@ -103,7 +103,7 @@ def poll_cameras():
             print (cameras[key])
             break
 
-        print (response)
+        # DEBUG print (response)
         local_cams_object[key]["payload"]["severity"] = 'critical'
         local_cams_object[key]["payload"]["timestamp"] = response[key]["last_event"]["start_time"]
         local_cams_object[key]["payload"]["source"] = response[key]["name_long"]
