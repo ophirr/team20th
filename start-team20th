@@ -1,0 +1,6 @@
+if ! screen -list | grep -q "team20th"; then
+ cd /home/ubuntu/team20th
+  while true; do
+ screen -S team20th -d -m python3 team20-alerts.py  && break
+  done
+fi

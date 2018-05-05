@@ -1,0 +1,4 @@
+requests
+pypd
+schedule
+ConfigParser
