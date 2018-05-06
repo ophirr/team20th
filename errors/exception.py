@@ -20,3 +20,7 @@ class Error(Exception):
 class APIError(Error):
     def __init__(self, result):
         self.result = result
+
+class InternalError(Error):
+    def __init__(self, result):
+        self.result = result

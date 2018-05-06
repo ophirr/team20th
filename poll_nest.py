@@ -9,23 +9,28 @@ import pypd
 from errors import error_result
 from errors import APIError
 
+#### GET CONFIGURATION FROM CONFIG.TXT
 
 conf = configparser.ConfigParser()
 conf.read("config.txt")
 
 auth_t = conf.get('configuration', 'auth_token')
 nest_api_url = conf.get('configuration', 'nest_api')
+routing_key = conf.get('configuration', 'routing_key')
 
 
 local_cams_object = {
         # 'name' : name_object
         }
 
+
+#### OUR FUNCTIONS #####
+
 # Our event data object
-def get_camera_dict(name, camera_id):
+def get_camera_dict(name, camera_id, routing_key):
     # type: (object, object) -> object
     return {
-        'routing_key': 'R0157YB9LD9RLMHIGSHE753210DFAAU9',
+        'routing_key': routing_key,
         'event_action': 'trigger',
         'payload': {
             'summary': '',
@@ -61,9 +66,9 @@ def get_nest_data():
         init_res = requests.get(nest_api_url, headers=headers, allow_redirects=False)
 
         if init_res.status_code == 429:
-                return "Blocked - too many requests"
+            raise APIError(error_result("Received 429 - Throttled - Polling to fast?"))
         elif init_res.status_code == 402:
-                return "Unauthorized - bad token?"
+                raise APIError(error_result("Received 402 - Unauthorized - bad token?"))
         elif init_res.status_code == 307:
             api_response = requests.get(init_res.headers['Location'], headers=headers, allow_redirects=False)
             if  api_response.status_code == 200:
@@ -74,7 +79,7 @@ def get_nest_data():
         print(ce)
 
 
-# Initialize
+# Initialize local cameras object
 def init_cam_structures():
     cameras_json = get_nest_data()
 
@@ -82,10 +87,8 @@ def init_cam_structures():
 
         # populate our local cameras datastructure
         name = cameras_json[key]['device_id']
-        local_cams_object[name] = get_camera_dict(cameras_json[key]['name'], cameras_json[key]['device_id'])
+        local_cams_object[name] = get_camera_dict(cameras_json[key]['name'], cameras_json[key]['device_id'], routing_key)
 
-
-init_cam_structures()
 
 def poll_cameras():
     # type: (object) -> object
@@ -101,9 +104,7 @@ def poll_cameras():
         # No response from
 
         if response is None:
-            print ("No response from ")
-            print (cameras[key])
-            break
+            raise APIError(error_result("No Response from " + cameras[key]))
 
         # DEBUG print (response)
         local_cams_object[key]["payload"]["severity"] = 'critical'
@@ -150,11 +151,19 @@ def poll_cameras():
                     print
                     print ("last event time NOT matched -- sending PD Alert")
                     print (local_cams_object[key]["payload"]["summary"])
-                    print
+                    print (" ")
 
                 except Exception as bad:
                     print(bad)
+
         local_cams_object[key]["last_event_time"] = newtime
+
+
+#### START EXECUTION ####
+
+
+# First initialize our local cameras object
+init_cam_structures()
 
 # Run every two minutes
 schedule.every(2).minutes.do(poll_cameras)
