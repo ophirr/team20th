@@ -1,10 +1,13 @@
 #!/usr/bin/python
 
 import requests
+import urllib3
 import configparser
-import schedule
-import time
+import json
+import sseclient
 import pypd
+
+from urllib3.poolmanager import PoolManager
 
 from errors import error_result
 from errors import APIError
@@ -46,6 +49,16 @@ def get_camera_dict(name, camera_id, routing_key):
         'web_url' : ''
     }
 
+def with_requests(url):
+    """Get a streaming response for the given event feed using requests."""
+    import requests
+    return requests.get(url, stream=True)
+
+def with_urllib3(url):
+    """Get a streaming response for the given event feed using urllib3."""
+    import urllib3
+    http = urllib3.PoolManager()
+    return http.request('GET', url, preload_content=False)
 
 #### GET NEST DATA FROM CAMERAS #####
 
@@ -71,12 +84,49 @@ def get_nest_data():
                 raise APIError(error_result("Received 402 - Unauthorized - bad token?"))
         elif init_res.status_code == 307:
             api_response = requests.get(init_res.headers['Location'], headers=headers, allow_redirects=False)
-            if  api_response.status_code == 200:
+            if init_res.status_code == 429:
+                raise APIError(error_result("Received 429 - Throttled - Polling to fast?"))
+            elif  api_response.status_code == 200:
                 return api_response.json()
+
         elif init_res.status_code == 200:
             return init_res.json()
     except Exception as ce:
         print(ce)
+
+
+def get_data_stream(token, api_endpoint):
+    """ Start REST streaming device events given a Nest token.  """
+    headers = {
+        'Authorization': "Bearer {0}".format(token),
+        'Accept': 'text/event-stream'
+    }
+    url = api_endpoint
+
+    http = urllib3.PoolManager()
+    response = http.request('GET', url, headers=headers, preload_content=False)
+    #response = with_urllib3(url)
+    client = sseclient.SSEClient(response)
+    for event in client.events(): # returns a generator
+        event_type = event.event
+        print ("event: ", event_type)
+        if event_type == 'open': # not always received here
+            print ("The event stream has been opened")
+        elif event_type == 'put':
+            print ("Received an alert over the Nest stream (or initial data sent)")
+            print ("data: ", event.data)
+            event_json = json.loads(event.data)
+            poll_cameras(event_json)
+        elif event_type == 'keep-alive':
+            print ("No data updates. Receiving an HTTP header to keep the connection open.")
+        elif event_type == 'auth_revoked':
+            print ("The API authorization has been revoked.")
+            print ("revoked token: ", event.data)
+        elif event_type == 'error':
+            print ("Error occurred, such as connection closed.")
+            print ("error message: ", event.data)
+        else:
+            print ("Unknown event, no handler for it.")
 
 
 # Initialize local cameras object
@@ -90,51 +140,44 @@ def init_cam_structures():
         local_cams_object[name] = get_camera_dict(cameras_json[key]['name'], cameras_json[key]['device_id'], routing_key)
 
 
-def poll_cameras():
+def poll_cameras(cam_event):
     # type: (object) -> object
 
     for key, value in local_cams_object.items():
+    # print key, value
+
         # print key, value
         local_cams_object[key]['url'] = local_cams_object[key]['base_url'] + local_cams_object[key]['cam_id'] + '/'
-        # print key, value
-        response = get_nest_data()
 
         # If Nest Cloud is not responding
         # HTTPSConnectionPool(host='developer-api.nest.com', port=443): Max retries exceeded with url: /devices/cameras/f3lekKgaeNvSnmjlvY9kwpIeqdEWjvst8opkq0o-ecTH_fxyUXJyZQ/ (Caused by NewConnectionError('<urllib3.connection.VerifiedHTTPSConnection object at 0x10cdb6e50>: Failed to establish a new connection: [Errno 8] nodename nor servname provided, or not known',))
         # No response from
 
-        if response is None:
-            raise APIError(error_result("No Response from " + cameras[key]))
-
         # DEBUG print (response)
         local_cams_object[key]["payload"]["severity"] = 'critical'
-        local_cams_object[key]["payload"]["timestamp"] = response[key]["last_event"]["start_time"]
-        local_cams_object[key]["payload"]["source"] = response[key]["name_long"]
-        local_cams_object[key]["web_url"] = response[key]["last_event"]["web_url"]
+        local_cams_object[key]["payload"]["timestamp"] = cam_event['data'][key]["last_event"]["start_time"]
+        local_cams_object[key]["payload"]["source"] = cam_event['data'][key]["name_long"]
+        local_cams_object[key]["web_url"] = cam_event['data'][key]["last_event"]["web_url"]
 
-        if response[key]["last_event"]["has_person"]:
+        if cam_event['data'][key]["last_event"]["has_person"]:
             local_cams_object[key]["payload"]["summary"] = "API: " + local_cams_object[key]["payload"]["source"] + ' spotted a person'
 
-        elif response[key]["last_event"]["has_motion"]:
+        elif cam_event['data'][key]["last_event"]["has_motion"]:
             local_cams_object[key]["payload"]["summary"] = "API: " + local_cams_object[key]["payload"]["source"] + ' spotted movement'
 
-        elif response[key]["last_event"]["has_sound"]:
+        elif cam_event['data'][key]["last_event"]["has_sound"]:
             local_cams_object[key]["payload"]["summary"] = "API: " + local_cams_object[key]["payload"]["source"] + ' heard a loud noise'
 
         # sanitize
-        data = dict(local_cams_object[key])
+        clean = dict(local_cams_object[key])
 
         # Sanitize before sending to PD
-        del data['url']
-        del data['base_url']
-        del data['cam_id']
+        del clean['url']
+        del clean['base_url']
+        del clean['cam_id']
 
         oldtime = local_cams_object[key]["last_event_time"]
-        newtime = response[key]["last_event"]["start_time"]
-
-        print (local_cams_object[key]["payload"]["source"])
-        print ("testing newtime == oldtime")
-        print ("oldtime : " + oldtime + "  " + "newtime : " + newtime)
+        newtime = cam_event['data'][key]["last_event"]["start_time"]
 
         # Skip on start up
         if oldtime:
@@ -144,19 +187,48 @@ def poll_cameras():
                 try:
                     #### SEND AN EVENT TO PAGERDUTY #####
                     # create a version 2 event
-                    alert = pypd.EventV2.create(data)
+                    alert = pypd.EventV2.create(clean)
 
                     # alert return {u'status': u'success', u'message': u'Event processed', u'dedup_key': u'15bf1c5df8fe4ec3bb06cffd4c317cac'}
 
-                    print
-                    print ("last event time NOT matched -- sending PD Alert")
+                    print ("oldtime : " + oldtime + "  " + "newtime : " + newtime)
+                    print ("last event time NOT matched -- sending PD Alert for", local_cams_object[key]["payload"]["source"])
                     print (local_cams_object[key]["payload"]["summary"])
-                    print (" ")
+                    print
 
                 except Exception as bad:
                     print(bad)
 
         local_cams_object[key]["last_event_time"] = newtime
+
+
+
+        #
+        # print (local_cams_object[key]["payload"]["source"])
+        # print ("testing newtime == oldtime")
+        # print ("oldtime : " + oldtime + "  " + "newtime : " + newtime)
+        #
+        # # Skip on start up
+        # if oldtime:
+        #     if newtime == oldtime:
+        #         print ("last event time matched -- skipping")
+        #     else:
+        #         try:
+        #             #### SEND AN EVENT TO PAGERDUTY #####
+        #             # create a version 2 event
+        #             alert = pypd.EventV2.create(data)
+        #
+        #             # alert return {u'status': u'success', u'message': u'Event processed', u'dedup_key': u'15bf1c5df8fe4ec3bb06cffd4c317cac'}
+        #
+        #             print
+        #             print ("last event time NOT matched -- sending PD Alert")
+        #             print (local_cams_object[key]["payload"]["summary"])
+        #             print (" ")
+        #
+        #         except Exception as bad:
+        #             print(bad)
+        #
+        # local_cams_object[key]["last_event_time"] = newtime
 
 
 #### START EXECUTION ####
@@ -165,10 +237,12 @@ def poll_cameras():
 # First initialize our local cameras object
 init_cam_structures()
 
-# Run every two minutes
-schedule.every(2).minutes.do(poll_cameras)
+get_data_stream(auth_t, nest_api_url)
 
-while True:
-    schedule.run_pending()
-    time.sleep(1)
+# Run every two minutes
+#schedule.every(2).minutes.do(poll_cameras)
+
+#while True:
+ #   schedule.run_pending()
+ #   time.sleep(1)
 
