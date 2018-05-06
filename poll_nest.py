@@ -111,7 +111,7 @@ def get_data_stream(token, api_endpoint):
 
     for event in client.events(): # returns a generator
         event_type = event.event
-        print ("event: ", event_type)
+        # print ("event: ", event_type)
         if event_type == 'open': # not always received here
             print ("The event stream has been opened")
         elif event_type == 'put':
@@ -185,7 +185,7 @@ def poll_cameras(cam_event):
         if oldtime:
             if newtime == oldtime:
                 # print ("last event time matched -- skipping")
-                print (".")
+                print (".", end='')
             else:
                 try:
                     #### SEND AN EVENT TO PAGERDUTY #####
@@ -194,9 +194,9 @@ def poll_cameras(cam_event):
 
                     # alert return {u'status': u'success', u'message': u'Event processed', u'dedup_key': u'15bf1c5df8fe4ec3bb06cffd4c317cac'}
 
-                    print ("oldtime : " + oldtime + "  " + "newtime : " + newtime)
-                    print ("last event time NOT matched -- sending PD Alert for", local_cams_object[key]["payload"]["source"])
-                    print (local_cams_object[key]["payload"]["summary"])
+                    # print ("oldtime : " + oldtime + "  " + "newtime : " + newtime)
+                    #print ("last event time NOT matched -- sending PD Alert for", local_cams_object[key]["payload"]["source"])
+                    print (local_cams_object[key]["payload"]["summary"], " -- sending PD Alert")
                     print
 
                 except Exception as bad:
