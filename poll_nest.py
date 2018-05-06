@@ -1,5 +1,5 @@
 #!/usr/bin/python
-
+from __future__ import print_function
 import requests
 import urllib3
 import configparser
@@ -116,7 +116,7 @@ def get_data_stream(token, api_endpoint):
             print ("The event stream has been opened")
         elif event_type == 'put':
             print ("Received an alert over the Nest stream (or initial data sent)")
-            print ("data: ", event.data)
+            # print ("data: ", event.data)
             event_json = json.loads(event.data)
             poll_cameras(event_json)
         elif event_type == 'keep-alive':
@@ -202,6 +202,7 @@ def poll_cameras(cam_event):
                 except Exception as bad:
                     print(bad)
 
+        print
         local_cams_object[key]["last_event_time"] = newtime
 
 
