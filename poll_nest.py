@@ -185,7 +185,7 @@ def poll_cameras(cam_event):
         if oldtime:
             if newtime == oldtime:
                 # print ("last event time matched -- skipping")
-                print (".", end='')
+                # print (".", end='')
             else:
                 try:
                     #### SEND AN EVENT TO PAGERDUTY #####
@@ -196,13 +196,14 @@ def poll_cameras(cam_event):
 
                     # print ("oldtime : " + oldtime + "  " + "newtime : " + newtime)
                     #print ("last event time NOT matched -- sending PD Alert for", local_cams_object[key]["payload"]["source"])
+                    print()
                     print (local_cams_object[key]["payload"]["summary"], " -- sending PD Alert")
-                    print
+                    print()
 
                 except Exception as bad:
                     print(bad)
 
-        print
+        print()
         local_cams_object[key]["last_event_time"] = newtime
 
 
