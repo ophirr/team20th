@@ -103,10 +103,12 @@ def get_data_stream(token, api_endpoint):
     }
     url = api_endpoint
 
+
     http = urllib3.PoolManager()
     response = http.request('GET', url, headers=headers, preload_content=False)
-    #response = with_urllib3(url)
+
     client = sseclient.SSEClient(response)
+
     for event in client.events(): # returns a generator
         event_type = event.event
         print ("event: ", event_type)
@@ -182,7 +184,8 @@ def poll_cameras(cam_event):
         # Skip on start up
         if oldtime:
             if newtime == oldtime:
-                print ("last event time matched -- skipping")
+                # print ("last event time matched -- skipping")
+                print (".")
             else:
                 try:
                     #### SEND AN EVENT TO PAGERDUTY #####
