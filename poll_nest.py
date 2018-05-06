@@ -203,33 +203,6 @@ def poll_cameras(cam_event):
 
 
 
-        #
-        # print (local_cams_object[key]["payload"]["source"])
-        # print ("testing newtime == oldtime")
-        # print ("oldtime : " + oldtime + "  " + "newtime : " + newtime)
-        #
-        # # Skip on start up
-        # if oldtime:
-        #     if newtime == oldtime:
-        #         print ("last event time matched -- skipping")
-        #     else:
-        #         try:
-        #             #### SEND AN EVENT TO PAGERDUTY #####
-        #             # create a version 2 event
-        #             alert = pypd.EventV2.create(data)
-        #
-        #             # alert return {u'status': u'success', u'message': u'Event processed', u'dedup_key': u'15bf1c5df8fe4ec3bb06cffd4c317cac'}
-        #
-        #             print
-        #             print ("last event time NOT matched -- sending PD Alert")
-        #             print (local_cams_object[key]["payload"]["summary"])
-        #             print (" ")
-        #
-        #         except Exception as bad:
-        #             print(bad)
-        #
-        # local_cams_object[key]["last_event_time"] = newtime
-
 
 #### START EXECUTION ####
 
