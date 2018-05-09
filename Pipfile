@@ -1,0 +1,21 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[dev-packages]
+
+[packages]
+certifi = "==2018.4.16"
+chardet = "==3.0.4"
+configparser = "==3.5.0"
+idna = "==2.6"
+pycairo = "==1.16.3"
+pypd = "==1.1.0"
+requests = "==2.18.4"
+six = "==1.11.0"
+"urllib3" = "==1.22"
+sseclient-py = "*"
+
+[requires]
+python_version = "2.7"
