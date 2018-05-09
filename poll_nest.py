@@ -2,9 +2,9 @@ from __future__ import print_function
 import requests
 import urllib3
 import configparser
-import json
 import sseclient
 import pypd
+import json
 
 from string import Template
 from errors import error_result
@@ -92,7 +92,19 @@ def get_data_stream(token, api_endpoint):
 
 
     http = urllib3.PoolManager()
-    response = http.request('GET', url, headers=headers, preload_content=False)
+
+    try:
+        response = http.request('GET', url, headers=headers, preload_content=False)
+    except requests.exceptions.Timeout:
+        # Maybe set up for a retry, or continue in a retry loop
+        raise APIError(error_result("Timeout on request"))
+    except requests.exceptions.TooManyRedirects:
+        # Tell the user their URL was bad and try a different one
+        raise APIError(error_result("Too many redirects on request"))
+    except requests.exceptions.RequestException as e:
+        # catastrophic error. bail.
+        print(e)
+        sys.exit(1)
 
     client = sseclient.SSEClient(response)
 
