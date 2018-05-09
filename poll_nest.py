@@ -6,6 +6,7 @@ import configparser
 import json
 import sseclient
 import pypd
+import shutil
 
 # from urllib3.poolmanager import PoolManager
 from string import Template
@@ -160,9 +161,16 @@ def grab_image(device_id, event_type):
                 raise APIError(error_result("Received 429 - Throttled - Polling to fast?"))
             elif api_response.status_code == 200:
                 image = api_response.text
+                # clean up the text
+                image = image.replace('"','')
+
                 filename = 'images/' + event_type[0] + '-' + event_type[1] + '.jpg'
-                with requests.get(image, init_res.headers['Location'], headers=headers, allow_redirects=False) as resp, open(filename, 'wb') as out_file:
-                    shutil.copyfileobj(resp, out_file)
+                r = requests.get(image)
+                with open(filename, 'wb') as fout:
+                    fout.write(r.content)
+
+              #  with requests.get(image, init_res.headers['Location'], headers=headers, allow_redirects=False) as resp, open(filename, 'wb') as out_file:
+              #      shutil.copyfileobj(resp, out_file)
 
         elif init_res.status_code == 200:
             return init_res.json()
