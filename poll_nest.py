@@ -68,6 +68,8 @@ def get_nest_data():
 
         if init_res.status_code == 429:
             raise APIError(error_result("Received 429 - Throttled - Polling to fast?"))
+        elif init_res.status_code == 401:
+            raise APIError(error_result("Received 401 - Unauthorized - sometimes caused by redirects?"))
         elif init_res.status_code == 402:
                 raise APIError(error_result("Received 402 - Unauthorized - bad token?"))
         elif init_res.status_code == 307:
