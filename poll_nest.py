@@ -143,7 +143,7 @@ def init_cam_structures():
         local_cams_object[name] = get_camera_dict(cameras_json[key]['name'], cameras_json[key]['device_id'], routing_key)
 
 
-def grab_image(device_id, event_type):
+def grab_image(device_id, event_type, location):
 
     camera = device_id
     target = Template("https://developer-api.nest.com/devices/cameras/${camera}/last_event/animated_image_url")  # type: Template
@@ -175,7 +175,7 @@ def grab_image(device_id, event_type):
                 # clean up the text
                 image = image.replace('"','')
 
-                filename = 'images/' + event_type[0] + '-' + event_type[1] + '.gif'
+                filename = 'images/' + location + '-' + event_type[0] + '-' + event_type[1] + '.gif'
                 r = requests.get(image)
                 with open(filename, 'wb') as fout:
                     fout.write(r.content)
@@ -236,7 +236,7 @@ def poll_cameras(cam_event):
                 try:
 
                     # Grab the event image and store it locally
-                    grab_image(cam_event['data'][key]["device_id"], event_type)
+                    grab_image(cam_event['data'][key]["device_id"], event_type, cam_event['data'][key]["name"])
 
                     #### SEND AN EVENT TO PAGERDUTY #####
                     # create a version 2 event
