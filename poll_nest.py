@@ -1,4 +1,3 @@
-#!/usr/bin/python
 from __future__ import print_function
 import requests
 import urllib3
@@ -6,9 +5,7 @@ import configparser
 import json
 import sseclient
 import pypd
-import shutil
 
-# from urllib3.poolmanager import PoolManager
 from string import Template
 from errors import error_result
 from errors import APIError
@@ -135,7 +132,7 @@ def init_cam_structures():
 def grab_image(device_id, event_type):
 
     camera = device_id
-    target = Template("https://developer-api.nest.com/devices/cameras/${camera}/last_event/image_url")  # type: Template
+    target = Template("https://developer-api.nest.com/devices/cameras/${camera}/last_event/animated_image_url")  # type: Template
     image_url = target.substitute({'camera': camera})
 
     headers = {
@@ -164,7 +161,7 @@ def grab_image(device_id, event_type):
                 # clean up the text
                 image = image.replace('"','')
 
-                filename = 'images/' + event_type[0] + '-' + event_type[1] + '.jpg'
+                filename = 'images/' + event_type[0] + '-' + event_type[1] + '.gif'
                 r = requests.get(image)
                 with open(filename, 'wb') as fout:
                     fout.write(r.content)
