@@ -6,9 +6,10 @@ import configparser
 import json
 import sseclient
 import pypd
+import shutil
 
-from urllib3.poolmanager import PoolManager
-
+# from urllib3.poolmanager import PoolManager
+from string import Template
 from errors import error_result
 from errors import APIError
 
@@ -49,16 +50,6 @@ def get_camera_dict(name, camera_id, routing_key):
         'web_url' : ''
     }
 
-def with_requests(url):
-    """Get a streaming response for the given event feed using requests."""
-    import requests
-    return requests.get(url, stream=True)
-
-def with_urllib3(url):
-    """Get a streaming response for the given event feed using urllib3."""
-    import urllib3
-    http = urllib3.PoolManager()
-    return http.request('GET', url, preload_content=False)
 
 #### GET NEST DATA FROM CAMERAS #####
 
@@ -88,7 +79,6 @@ def get_nest_data():
                 raise APIError(error_result("Received 429 - Throttled - Polling to fast?"))
             elif  api_response.status_code == 200:
                 return api_response.json()
-
         elif init_res.status_code == 200:
             return init_res.json()
     except Exception as ce:
@@ -142,6 +132,51 @@ def init_cam_structures():
         local_cams_object[name] = get_camera_dict(cameras_json[key]['name'], cameras_json[key]['device_id'], routing_key)
 
 
+def grab_image(device_id, event_type):
+
+    camera = device_id
+    target = Template("https://developer-api.nest.com/devices/cameras/${camera}/last_event/image_url")  # type: Template
+    image_url = target.substitute({'camera': camera})
+
+    headers = {
+        'authorization': "Bearer " + auth_t,
+        'content-type': "application/json",
+    }
+
+    # SOMETIMES WE DON'T GET DATA AND NEED TO TRY AGAIN OTHERWISE WE FAIL
+    #  File "/Users/ophir/src/team20th/team20-alerts.py", line 75, in poll_cameras
+    #     cameras[key]["payload"]["timestamp"] = response["last_event"]["start_time"]
+    # TypeError: 'NoneType' object has no attribute '__getitem__'
+
+    try:
+        init_res = requests.get(image_url, headers=headers, allow_redirects=False)
+
+        if init_res.status_code == 429:
+            raise APIError(error_result("Received 429 - Throttled - Polling to fast?"))
+        elif init_res.status_code == 402:
+            raise APIError(error_result("Received 402 - Unauthorized - bad token?"))
+        elif init_res.status_code == 307:
+            api_response = requests.get(init_res.headers['Location'], headers=headers, allow_redirects=False)
+            if init_res.status_code == 429:
+                raise APIError(error_result("Received 429 - Throttled - Polling to fast?"))
+            elif api_response.status_code == 200:
+                image = api_response.text
+                # clean up the text
+                image = image.replace('"','')
+
+                filename = 'images/' + event_type[0] + '-' + event_type[1] + '.jpg'
+                r = requests.get(image)
+                with open(filename, 'wb') as fout:
+                    fout.write(r.content)
+
+              #  with requests.get(image, init_res.headers['Location'], headers=headers, allow_redirects=False) as resp, open(filename, 'wb') as out_file:
+              #      shutil.copyfileobj(resp, out_file)
+
+        elif init_res.status_code == 200:
+            return init_res.json()
+    except Exception as ce:
+        print(ce)
+
 def poll_cameras(cam_event):
     # type: (object) -> object
 
@@ -163,13 +198,13 @@ def poll_cameras(cam_event):
 
         if cam_event['data'][key]["last_event"]["has_person"]:
             local_cams_object[key]["payload"]["summary"] = "API: " + local_cams_object[key]["payload"]["source"] + ' spotted a person'
-
+            event_type = ("person", cam_event['data'][key]["last_event"]["start_time"] )
         elif cam_event['data'][key]["last_event"]["has_motion"]:
             local_cams_object[key]["payload"]["summary"] = "API: " + local_cams_object[key]["payload"]["source"] + ' spotted movement'
-
+            event_type = ("movement", cam_event['data'][key]["last_event"]["start_time"])
         elif cam_event['data'][key]["last_event"]["has_sound"]:
             local_cams_object[key]["payload"]["summary"] = "API: " + local_cams_object[key]["payload"]["source"] + ' heard a loud noise'
-
+            event_type = ("noise", cam_event['data'][key]["last_event"]["start_time"])
         # sanitize
         clean = dict(local_cams_object[key])
 
@@ -185,9 +220,13 @@ def poll_cameras(cam_event):
         if oldtime:
             if newtime == oldtime:
                 # print ("last event time matched -- skipping")
-                # print (".", end='')
+                print (".", end='')
             else:
                 try:
+
+                    # Grab the event image and store it locally
+                    grab_image(cam_event['data'][key]["device_id"], event_type)
+
                     #### SEND AN EVENT TO PAGERDUTY #####
                     # create a version 2 event
                     alert = pypd.EventV2.create(clean)
@@ -196,14 +235,14 @@ def poll_cameras(cam_event):
 
                     # print ("oldtime : " + oldtime + "  " + "newtime : " + newtime)
                     #print ("last event time NOT matched -- sending PD Alert for", local_cams_object[key]["payload"]["source"])
-                    print()
-                    print (local_cams_object[key]["payload"]["summary"], " -- sending PD Alert")
-                    print()
+                    print (local_cams_object[key]["payload"]["summary"], " -- sending PD Alert @", newtime)
+
+                    # ADD IN CODE FOR GRABBING LAST_EVENT/ANIMATED_IMAGE_URL
+                    # THEN USE THIS: https://stackoverflow.com/questions/8286352/how-to-save-an-image-locally-using-python-whose-url-address-i-already-know
 
                 except Exception as bad:
                     print(bad)
 
-        print()
         local_cams_object[key]["last_event_time"] = newtime
 
 
@@ -215,12 +254,7 @@ def poll_cameras(cam_event):
 # First initialize our local cameras object
 init_cam_structures()
 
+# start listening for events over SSE
 get_data_stream(auth_t, nest_api_url)
 
-# Run every two minutes
-#schedule.every(2).minutes.do(poll_cameras)
-
-#while True:
- #   schedule.run_pending()
- #   time.sleep(1)
 
