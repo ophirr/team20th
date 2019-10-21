@@ -13,7 +13,7 @@ cffi==1.11.5
 chardet==3.0.4
 configparser==3.5.0
 cryptography==2.2.2
-ecdsa==0.13
+ecdsa==0.13.3
 enum34==1.1.6
 esptool==2.1
 futures==3.2.0
