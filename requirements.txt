@@ -73,7 +73,7 @@ pypd==1.1.0
 pyserial==3.4
 python-dateutil==1.5
 pytz==2013.7
-PyYAML==3.10
+PyYAML==5.4
 requests==2.18.4
 schedule==0.5.0
 scipy==0.13.0b1
